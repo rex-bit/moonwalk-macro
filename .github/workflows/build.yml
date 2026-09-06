@@ -1,0 +1,77 @@
+name: Build EXE
+
+# Tiap ada perubahan di moonwalk_macro.py, GitHub otomatis bikinin file .exe
+# terus dipasang di halaman Releases. Nggak perlu install apa-apa di komputer.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "moonwalk_macro.py"
+      - "icon.ico"
+      - ".github/workflows/build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Ambil kode
+        uses: actions/checkout@v4
+
+      - name: Siapin Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyInstaller
+        run: pip install --upgrade pyinstaller
+
+      - name: Baca versi dari moonwalk_macro.py
+        id: ver
+        shell: pwsh
+        run: |
+          $m = Select-String -Path moonwalk_macro.py -Pattern '^VERSION\s*=\s*"(.+)"' | Select-Object -First 1
+          $v = $m.Matches[0].Groups[1].Value
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "versi yang dibuild: $v"
+
+      - name: Build .exe
+        run: >
+          pyinstaller --onefile --noconsole
+          --name MoonwalkMacro
+          --icon icon.ico
+          moonwalk_macro.py
+
+      - name: Simpan hasil build
+        uses: actions/upload-artifact@v4
+        with:
+          name: MoonwalkMacro-v${{ steps.ver.outputs.version }}
+          path: dist/MoonwalkMacro.exe
+          if-no-files-found: error
+
+      - name: Pasang di halaman Releases
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $tag = "v${{ steps.ver.outputs.version }}"
+          gh release view $tag 2>$null | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag "dist/MoonwalkMacro.exe" `
+              --title "Moonwalk Macro $tag" `
+              --notes "Build otomatis dari commit $env:GITHUB_SHA.
+
+          Download **MoonwalkMacro.exe** di bawah, langsung dobel klik — nggak perlu install Python.
+
+          Catatan: Windows Defender / SmartScreen kadang ngasih peringatan palsu buat file hasil PyInstaller. Kalau muncul, pilih **More info** lalu **Run anyway**."
+          } else {
+            gh release upload $tag "dist/MoonwalkMacro.exe" --clobber
+          }
+          if ($LASTEXITCODE -ne 0) { exit 1 }
