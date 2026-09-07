@@ -1,5 +1,5 @@
 """
-M4CRO MOONWALK  v2.0  
+M4CRO MOONWALK  v2.0 
 """
 
 import json
@@ -24,7 +24,7 @@ from ctypes import wintypes
 # ============================================================================
 LAYOUT = "macos"             # "macos" | "game" | "minimal" | "pro"
 SHOW_BG = True               # background senja di layout "game"
-VERSION = "6.1"
+VERSION = "6.2"
 UPDATE_URL = ""              # link raw ke moonwalk_macro.py versi terbaru
 USE_CUSTOM_TITLEBAR = True   # False = pakai frame Windows biasa (lebih aman)
 ALWAYS_ON_TOP       = True   # False = jendela bisa ketutup window lain
@@ -257,7 +257,7 @@ def app_dir():
 SETTINGS_PATH = os.path.join(app_dir(), "settings.json")
 DEFAULTS = {"hotkey": "Q", "speed": 35, "mode": "HOLD", "master_key": "F2",
             "theme": "emas", "sequence": ["A", "D"], "jitter": 0, "gap": 0, "layout": "macos",
-            "show_bg": True, "update_url": ""}
+            "show_bg": True, "update_url": "", "updated_from": ""}
 
 PRESET_SEQ = [
     ("DA HOOD", ["I", "O"]),          # zoom kamera in/out = speed glitch
@@ -1344,6 +1344,15 @@ class App(tk.Tk):
         round_window_corners(self)
         self._fade_in()
         self._tick()
+
+        # habis auto-update, kasih tau versinya sekarang berapa
+        lama = engine.cfg.get("updated_from", "")
+        if lama and lama != VERSION:
+            engine.cfg["updated_from"] = ""
+            save_settings(engine.cfg)
+            self.after(900, lambda: self.toast(
+                "Update selesai — sekarang v%s (tadinya v%s)" % (VERSION, lama),
+                "ok", ms=7000))
 
     def _build_ui(self):
         """Gambar ulang seluruh UI (dipakai juga waktu ganti tema)."""
@@ -2960,6 +2969,33 @@ class App(tk.Tk):
                                          else "belum diisi — set di halaman Tentang")),
                        fill=G_DIM, font=ui_font(9))
 
+    def toast(self, msg, kind="info", ms=4500):
+        """Notifikasi kecil di bawah — nggak bakal ketimpa status yang
+        di-refresh tiap 40 ms kayak _flash."""
+        if self.mini or self.cv is None:
+            return
+        cv = self.cv
+        cv.delete("toast")
+        col = {"ok": GREEN, "warn": RED}.get(kind, GOLD)
+        f = ui_font(9, True)
+        w = min(self.W - 36, max(180, f.measure(msg) + 56))
+        h = 42
+        x1 = (self.W - w) / 2
+        y2 = self.win_h - 16
+        y1 = y2 - h
+        rr(cv, x1 + 2, y1 + 4, x1 + w + 2, y2 + 4, 11,
+           fill=mix(BG_TOP, "#000000", 0.55), outline="", tags=("toast",))
+        rr(cv, x1, y1, x1 + w, y2, 11, fill=mix(BG_BOT, col, 0.14),
+           outline=col, tags=("toast",))
+        cy = (y1 + y2) / 2
+        cv.create_oval(x1 + 16, cy - 4, x1 + 24, cy + 4, fill=col, outline="",
+                       tags=("toast",))
+        cv.create_text(x1 + 34, cy, anchor="w", text=msg, fill=TXT, font=f,
+                       tags=("toast",))
+        cv.tag_raise("toast")
+        cv.tag_bind("toast", "<ButtonRelease-1>", lambda e: cv.delete("toast"))
+        self._toast_job = self.after(ms, lambda: cv.delete("toast"))
+
     def _paste_url(self):
         """Ambil link update dari clipboard."""
         global UPDATE_URL
@@ -2978,7 +3014,7 @@ class App(tk.Tk):
 
     def _do_update(self):
         if not UPDATE_URL:
-            self._flash("isi dulu link update-nya")
+            self.toast("Link update belum diisi — klik Tempel link dulu", "warn")
             return
         if getattr(sys, "frozen", False):
             # .exe nggak bisa nimpa dirinya sendiri pas lagi jalan
@@ -2986,25 +3022,48 @@ class App(tk.Tk):
             if url:
                 import webbrowser
                 webbrowser.open(url)
-                self._flash("dibuka di browser — download .exe terbaru")
+                self.toast("Halaman rilis dibuka — download .exe terbaru", "ok")
             else:
-                self._flash("update .exe: download manual dari GitHub")
+                self.toast("Versi .exe: download manual dari GitHub", "warn")
             return
-        self._flash("lagi cek update...")
-        self.update_idletasks()
-        ver, text, err = check_update(UPDATE_URL)
+        self.toast("Lagi cek update...", "info", ms=30000)
+        box = {}
+
+        def kerja():
+            box["res"] = check_update(UPDATE_URL)
+
+        threading.Thread(target=kerja, daemon=True).start()
+        self._poll_update(box, 0)
+
+    def _poll_update(self, box, n):
+        """Nunggu hasil cek update tanpa bikin UI-nya nge-freeze."""
+        if "res" not in box:
+            if n > 250:
+                self.toast("Timeout — koneksi lemot atau link salah", "warn")
+                return
+            self.after(80, lambda: self._poll_update(box, n + 1))
+            return
+        ver, text, err = box["res"]
         if err:
-            self._flash(err)
+            self.toast(err, "warn", ms=6000)
             return
-        if _ver_tuple(ver) <= _ver_tuple(VERSION):
-            self._flash("udah versi terbaru (%s)" % VERSION)
+        if _ver_tuple(ver) < _ver_tuple(VERSION):
+            self.toast("Punyamu (v%s) malah lebih baru dari GitHub (v%s)"
+                       % (VERSION, ver), "warn", ms=6000)
+            return
+        if _ver_tuple(ver) == _ver_tuple(VERSION):
+            self.toast("Udah paling baru — kamu pakai v%s" % VERSION, "ok",
+                       ms=5000)
             return
         err = apply_update(text)
         if err:
-            self._flash(err)
+            self.toast(err, "warn", ms=6000)
             return
-        self._flash("update ke v%s berhasil — restart..." % ver)
-        self.after(900, restart_app)
+        self.engine.cfg["updated_from"] = VERSION
+        save_settings(self.engine.cfg)
+        self.toast("Ketemu v%s! Lagi dipasang, app restart bentar..." % ver,
+                   "ok", ms=6000)
+        self.after(1500, restart_app)
 
     def _set_bg(self, on):
         global SHOW_BG
