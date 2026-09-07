@@ -1,3 +1,7 @@
+"""
+M4CRO MOONWALK  v2.0  
+"""
+
 import json
 import math
 import os
@@ -20,7 +24,7 @@ from ctypes import wintypes
 # ============================================================================
 LAYOUT = "macos"             # "macos" | "game" | "minimal" | "pro"
 SHOW_BG = True               # background senja di layout "game"
-VERSION = "6.0"
+VERSION = "6.1"
 UPDATE_URL = ""              # link raw ke moonwalk_macro.py versi terbaru
 USE_CUSTOM_TITLEBAR = True   # False = pakai frame Windows biasa (lebih aman)
 ALWAYS_ON_TOP       = True   # False = jendela bisa ketutup window lain
@@ -293,6 +297,16 @@ def check_update(url, timeout=12):
     if not m:
         return None, None, "versi nggak ketemu di file"
     return m.group(1), data, ""
+
+
+def releases_url(raw_url):
+    """Ubah link raw GitHub jadi link halaman Releases."""
+    m = re.match(r"https://raw\.githubusercontent\.com/([^/]+)/([^/]+)/",
+                 raw_url or "")
+    if m:
+        return "https://github.com/%s/%s/releases/latest" % (m.group(1),
+                                                             m.group(2))
+    return ""
 
 
 def apply_update(text):
@@ -2965,6 +2979,16 @@ class App(tk.Tk):
     def _do_update(self):
         if not UPDATE_URL:
             self._flash("isi dulu link update-nya")
+            return
+        if getattr(sys, "frozen", False):
+            # .exe nggak bisa nimpa dirinya sendiri pas lagi jalan
+            url = releases_url(UPDATE_URL)
+            if url:
+                import webbrowser
+                webbrowser.open(url)
+                self._flash("dibuka di browser — download .exe terbaru")
+            else:
+                self._flash("update .exe: download manual dari GitHub")
             return
         self._flash("lagi cek update...")
         self.update_idletasks()
