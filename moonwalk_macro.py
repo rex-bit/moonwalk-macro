@@ -1,22 +1,3 @@
-"""
-M4CRO MOONWALK  v2.0  -  A + D Spam Macro (Windows)
-====================================================
-UI modern: custom title bar, rounded button, animasi, key visualizer.
-
-Fitur:
-  - Spam tombol A dan D bergantian (moonwalk / strafe)
-  - Custom hotkey (default: Q) - bisa tekan tombol langsung
-  - Custom speed: slider + preset chip + input angka
-  - Mode TAHAN (hold) / TOGGLE  (segmented control animasi)
-  - Master ON/OFF pakai F2
-  - Live counter: total tekan + kecepatan (keys/s)
-  - Setting tersimpan otomatis di settings.json
-
-Tidak butuh library eksternal. Python 3.8+ di Windows.
-Jalankan : python moonwalk_macro.py     (atau klik JALANKAN.bat)
-Build exe: klik build_exe.bat
-"""
-
 import json
 import math
 import os
